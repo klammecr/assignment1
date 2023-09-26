@@ -32,9 +32,8 @@ def calc_similarity_H(pts, overlay_img, output_path, colors):
     s = Vh[np.argmin(S)]
     s_mat = np.array([
         [s[0], s[1]],
-        [s[1], s[2]]
+        [s[1], 1]
     ])
-    s_mat /= s_mat[-1, -1]
 
     # Find H
     U, S, Vh = np.linalg.svd(s_mat)
@@ -47,7 +46,7 @@ if __name__ == "__main__":
 
     # Create argument parser
     parser = argparse.ArgumentParser("GeoViz A1:Q1 Driver", None, "")
-    parser.add_argument("-i", "--img_file", default="data/q1/facade.jpg")
+    parser.add_argument("-i", "--img_file", default="data/q1/chess1.jpg")
     parser.add_argument("-a2", "--annotation_file", default="data/annotation/q2_annotation.npy")
     parser.add_argument("-o", "--output_dir", default="output")
     args = parser.parse_args()
