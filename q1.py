@@ -20,6 +20,14 @@ def write_img(output_path, image):
     except Exception as e:
         print(f"Error while saving the image: {str(e)}")
 
+def overlay_img(img, pts, output_path, suffix, colors):
+    # Display annotations
+    overlay_img = img.copy()
+    for i in range(0, pts.shape[0], 4):
+        cv2.line(overlay_img, pts[i+1][:2].astype("int"), pts[i][:2].astype("int"), colors[i//4], thickness=3)
+        cv2.line(overlay_img, pts[i+3][:2].astype("int"), pts[i+2][:2].astype("int"), colors[i//4], thickness=3)
+    write_img(f"{output_path}_{suffix}.jpg", overlay_img)
+
 def cross_product_mat(vec):
     """
     Create a skew symmetric cross product matrix.
@@ -92,10 +100,6 @@ def evaluate_angles(H, test_points, img, img_rect, file_stem, colors):
         angle_before  = calc_angle_btwn_lines(line_coeffs_1[:2], line_coeffs_2[:2])
         eval_list[0].append(angle_before)
 
-        # Show test lines
-        cv2.line(test_lines_overlay, test_points[i].astype("int")[:2],   test_points[i+1].astype("int")[:2], color = colors[i//4], thickness=2)
-        cv2.line(test_lines_overlay, test_points[i+3].astype("int")[:2], test_points[i+2].astype("int")[:2], color = colors[i//4], thickness=2)
-
         # New lines
         l_prime_coeffs_1 = np.linalg.inv(H).T @ line_coeffs_1
         l_prime_coeffs_1 /= l_prime_coeffs_1[-1]
@@ -104,31 +108,28 @@ def evaluate_angles(H, test_points, img, img_rect, file_stem, colors):
         angle_after = calc_angle_btwn_lines(l_prime_coeffs_1[:2], l_prime_coeffs_2[:2])
         eval_list[1].append(angle_after)
 
-        # Show lines after rectification
-        points_T  = H @ np.stack((test_points[i:i+5, :])).T
-        points_T /= points_T[-1]
-        cv2.line(warp_lines_overlay, points_T[:, 0].astype("int")[:2], points_T[:, 1].astype("int")[:2], color = colors[i//4], thickness=2)
-        cv2.line(warp_lines_overlay, points_T[:, 2].astype("int")[:2], points_T[:, 3].astype("int")[:2], color = colors[i//4], thickness=2)
+
+    # Show test lines
+    overlay_img(img, test_points, file_stem, "test_lines", colors)
+
+    # Show lines after rectification
+    pts_T  = H @ test_points.T
+    pts_T /= pts_T[-1]
+    overlay_img(img_rect, pts_T.T, file_stem, "rect_test_lines", colors)
 
     # Display the table
     print(tabulate(eval_list, headers=["Before", "After"]))
     with open(f"{file_stem}_angles.txt", "w") as f:
         f.write(tabulate(eval_list, headers=["Before", "After"]))
 
-    # Save the overlay images
-    write_img(f"{file_stem}_test_lines.jpg", test_lines_overlay)
-    write_img(f"{file_stem}_rect_test_lines.jpg", warp_lines_overlay)
-    # cv2.imshow("sfsdf", warp_lines_overlay)
-    # cv2.waitKey()
-
     
 if __name__ == "__main__":
 
     # Create argument parser
     parser = argparse.ArgumentParser("GeoViz A1:Q1 Driver", None, "")
-    parser.add_argument("-i", "--img_file", default="data/q1/chess1.jpg")
+    parser.add_argument("-i", "--img_file", default="data/q1/tiles5.jpg")
     parser.add_argument("-a", "--annotation_file", default="data/annotation/q1_annotation.npy")
-    parser.add_argument("-o", "--output_dir", default="output")
+    parser.add_argument("-o", "--output_dir", default="output/q1")
     args = parser.parse_args()
 
     # Load in the in the image of interest:
@@ -138,7 +139,7 @@ if __name__ == "__main__":
       q1_annotation = np.load(f, allow_pickle=True)
     item_of_interest = args.img_file.split("/")[-1].split(".")[0]
 
-    output_path      = f"{args.output_dir}/q1_{item_of_interest}"
+    output_path      = f"{args.output_dir}/{item_of_interest}"
 
     gt_points = np.array(q1_annotation.item().get(item_of_interest))
     gt_points_homog = np.hstack((gt_points, np.ones((gt_points.shape[0], 1))))
@@ -151,7 +152,7 @@ if __name__ == "__main__":
     colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for _ in range(gt_points.shape[0]//4)]
 
     # Get the homography and get the rectified image
-    H_a = calc_affine_H(gt_points_homog_fit, img_overlay_lines, item_of_interest, colors)
+    H_a = calc_affine_H(gt_points_homog_fit, img_overlay_lines, output_path, colors)
     np.save(f"{output_path}_Ha", H_a)
     img_rect = MyWarp(img, H_a)
     # cv2.imshow("Rectified Image", img_rect)

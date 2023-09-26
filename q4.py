@@ -8,15 +8,14 @@ import random
 from q1 import evaluate_angles, write_img, overlay_img
 from utils import MyWarp
 
-def calc_similarity_H(pts, img, output_path, colors):
-    if pts.shape[0] != 8:
-        raise ValueError("Too many points")
+def calc_H(pts, img, output_path, colors):
+    # Here we need at least 5 pairs of perpendicular lines
+    if pts.shape[0] < 20:
+        raise ValueError("More points are required in order to run this method")
+    
+    N = pts.shape[0] // 4
 
-    overlay_img(img, pts, output_path, "affine_overlay", colors)
-
-    # Set up Ax = b
-    A = np.zeros((2, 3))
-    # b = np.zeros((2))
+    A = np.zeros((N,6))
     for i in range(0, pts.shape[0], 4):
         # Calculation
         l = np.cross(pts[i], pts[i + 1])
@@ -24,31 +23,30 @@ def calc_similarity_H(pts, img, output_path, colors):
         m = np.cross(pts[i + 2], pts[i + 3])
         m /= m[-1]
 
-        # Fill the A matrix
-        # 2x3 case
-        A[i//4] = np.array([l[0] * m[0], l[0]*m[1] + l[1]*m[0], l[1]*m[1]])
+        a_coeff = l[0] * m[0]
+        b_coeff = (l[1]*m[0] + l[0]*m[1])/2
+        c_coeff = l[1] * m[1]
+        d_coeff = (l[2] * m[0] + l[0] * m[2])/2
+        e_coeff = (l[2] * m[1] + l[1] * m[2]) / 2
+        f_coeff = l[2] * m[2]
+        A[i] = np.array([a_coeff, b_coeff, c_coeff, d_coeff, e_coeff, f_coeff])
 
-    # Find S
-    # x = np.linalg.solve(A, b)
-    U, S, Vh = np.linalg.svd(A)
-    x = Vh[-1]
-    s_mat = np.array([
-        [x[0], x[1], 0],
-        [x[1], x[2], 0],
-        [0,    0,    0]
-    ])
+    U, S, Vt = np.linalg.svd(A)
+    x = Vt[np.argmin(S)]
+    C = np.array([[x[0],  x[1]/2, x[3]/2],
+                 [x[1]/2, x[2],   x[4]/2],
+                 [x[3]/2, x[4]/2, x[5]]])
+    
+    U, D, Ut = np.linalg.svd(C)
 
-    # Find H
-    U, S, Vh = np.linalg.svd(s_mat)
-    S_mat = np.diag([(1/S[0])**0.5, (1/S[1])**0.5, 1])
-    H_s = U @ S_mat
+    H = U @ D
 
-    return H_s
+    return H
 
 if __name__ == "__main__":
 
     # Create argument parser
-    parser = argparse.ArgumentParser("GeoViz A1:Q2 Driver", None, "")
+    parser = argparse.ArgumentParser("GeoViz A1:Q4 Driver", None, "")
     parser.add_argument("-i", "--img_file", default="data/q1/tiles5.jpg")
     parser.add_argument("-a2", "--annotation_file", default="data/annotation/q2_annotation.npy")
     parser.add_argument("-o", "--output_dir", default="output/q2")
@@ -76,7 +74,7 @@ if __name__ == "__main__":
     overlay_img(img, gt_points_homog_fit, output_path, "annotated", colors)
 
     # Affine Rectification
-    H_a = np.load(f"{args.output_dir}/../q1/{item_of_interest}_Ha.npy")
+    H_a = np.load(f"{args.output_dir}/q1_{item_of_interest}_Ha.npy")
     aff_rect_img = MyWarp(img, H_a)
 
     # Calcualte test points after affine rectification
@@ -84,7 +82,7 @@ if __name__ == "__main__":
     test_pts /= test_pts[-1]
 
     # Calculate similarity
-    H_s = calc_similarity_H(test_pts.T, aff_rect_img.copy(), output_path, colors)
+    H_s = calc_H(test_pts.T, aff_rect_img.copy(), output_path, colors)
     sim_rect_img = MyWarp(img, H_s@ H_a)
     write_img(f"{output_path}_sim_rect.jpg", sim_rect_img)
 
